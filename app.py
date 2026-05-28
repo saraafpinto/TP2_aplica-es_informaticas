@@ -6,15 +6,42 @@ import requests
 
 # 1. Configuração Básica da Página do Streamlit
 st.set_page_config(page_title="Dashboard de Prevalência", layout="wide")
-st.title("📊 Dashboard Demográfico Interativo")
+st.title(" Dashboard Demográfico Interativo")
 
-# 2. Carregamento dos Dados com tratamento
+# Injeção de CSS Customizado
+st.markdown("""
+<style>
+    /* Esconder menu hamburger e footer padrão do Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Melhorar o padding (espaçamento) do topo da página */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    
+    /* Estilizar as métricas (KPIs) para se parecerem com cartões (Cards) */
+    div[data-testid="metric-container"] {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.03);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# =============================================================================
+# 1. CARREGAMENTO E PREPARAÇÃO DOS DADOS
+# =============================================================================
+# Importação do dataset e criação de colunas demográficas (Age_Group, Gender, Race_Ethnicity)
 @st.cache_data
 def carregar_e_tratar_dados():
-    # Carrega o CSV original
+    """Carrega o dataset e realiza a limpeza e criação de colunas demográficas."""
     df = pd.read_csv("dataset.csv")
     
-    # --- PASSO DE TRATAMENTO DE DADOS (Igual ao que fizeste no Power BI) ---
     # Criar a coluna Age_Group
     df['Age_Group'] = np.where(
         df['Break_Out_Category'].str.lower().str.contains('age', na=False),
@@ -38,14 +65,24 @@ def carregar_e_tratar_dados():
     
     return df
 
-# Chamar a função para ter o DataFrame limpo
+# Execução da função de carregamento para a memória
 df = carregar_e_tratar_dados()
 
-# --- 3. FILTROS DA BARRA LATERAL ---
-st.sidebar.header("🎯 Filtros Globais")
+# =============================================================================
+# 2. CONFIGURAÇÃO DOS FILTROS GLOBAIS (BARRA LATERAL)
+# =============================================================================
+st.sidebar.header(" Filtros Globais")
 
-# Filtro de Tópico
-lista_topicos = ["Todos os Tópicos"] + sorted(df['Topic'].dropna().unique().tolist())
+# Filtro de Categoria
+lista_categorias = ["Todas as Categorias"] + sorted(df['Category'].dropna().unique().tolist())
+categoria_selecionada = st.sidebar.selectbox("Categoria", lista_categorias)
+
+# Filtro de Tópico (Dinâmico com base na Categoria selecionada)
+if categoria_selecionada != "Todas as Categorias":
+    df_temp = df[df['Category'] == categoria_selecionada]
+    lista_topicos = ["Todos os Tópicos"] + sorted(df_temp['Topic'].dropna().unique().tolist())
+else:
+    lista_topicos = ["Todos os Tópicos"] + sorted(df['Topic'].dropna().unique().tolist())
 topico_selecionado = st.sidebar.selectbox("Tópico", lista_topicos)
 
 # Filtro de Estado
@@ -57,18 +94,19 @@ anos_disponiveis = sorted(df['Year'].dropna().unique().tolist())
 ano_min, ano_max = int(min(anos_disponiveis)), int(max(anos_disponiveis))
 anos_selecionados = st.sidebar.slider("Intervalo de Anos", ano_min, ano_max, (ano_min, ano_max))
 
-# Aplicação dos Filtros Dinâmicos
+# Aplicação combinada de todos os filtros (Ano, Categoria, Tópico e Estado) sobre o DataFrame original
 mascara_ano = (df['Year'] >= anos_selecionados[0]) & (df['Year'] <= anos_selecionados[1])
+mascara_categoria = (df['Category'] == categoria_selecionada) if categoria_selecionada != "Todas as Categorias" else True
 mascara_topico = (df['Topic'] == topico_selecionado) if topico_selecionado != "Todos os Tópicos" and topico_selecionado != "Selecionar tudo" else True
 mascara_estado = (df['LocationDesc'] == estado_selecionado) if estado_selecionado != "Todos os Estados" else True
 
-df_filtrado = df[mascara_ano & mascara_topico & mascara_estado].copy()
+df_filtrado = df[mascara_ano & mascara_categoria & mascara_topico & mascara_estado].copy()
 
 
 # -----------------------------------------------------------------------------
 # GRÁFICOS SUPERIORES (Evolução Temporal e Rankings por Estado/Tópico)
 # -----------------------------------------------------------------------------
-st.markdown("### 📈 Indicadores Gerais")
+st.markdown("### Indicadores Gerais")
 
 col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
 with col_kpi1:
@@ -79,7 +117,10 @@ with col_kpi2:
 with col_kpi3:
     st.metric("Estados Analisados", f"{df_filtrado['LocationAbbr'].nunique()}")
 
-# --- SECÇÃO DE INSIGHTS (Requisito 3 do Enunciado) ---
+# =============================================================================
+# 3. GERAÇÃO DINÂMICA DE INSIGHTS E RECOMENDAÇÕES
+# =============================================================================
+# Bloco expansível que calcula automaticamente as tendências e o grupo mais afetado
 with st.expander("💡 Insights e Recomendações Estratégicas", expanded=False):
     if not df_filtrado.empty:
         # Calcular os insights dinamicamente
@@ -107,7 +148,11 @@ with st.expander("💡 Insights e Recomendações Estratégicas", expanded=False
 
 st.markdown("---")
 
-# Primeira Linha de Gráficos: Linha de Tempo e Média por Topic
+# =============================================================================
+# 4. VISUALIZAÇÕES PRINCIPAIS (LINHA DO TEMPO E TÓPICOS)
+# =============================================================================
+# Gráfico 1: Linha do tempo (Evolução temporal da prevalência média)
+# Gráfico 2: Gráfico de barras verticais (Média de prevalência por tópico/doença)
 col1, col2 = st.columns(2)
 
 with col1:
@@ -136,7 +181,11 @@ with col2:
     st.plotly_chart(fig_topic, use_container_width=True)
 
 
-# Segunda Linha de Gráficos: Rankings de Estados (Risco vs Volume)
+# =============================================================================
+# 5. RANKINGS GEOGRÁFICOS (RISCO E VOLUME)
+# =============================================================================
+# Gráfico 3: Gráfico de barras horizontais (Top 10 Estados com maior risco/prevalência)
+# Gráfico 4: Gráfico de barras horizontais (Top 10 Estados com mais amostras/volume)
 col3, col4 = st.columns(2)
 
 with col3:
@@ -164,7 +213,7 @@ with col4:
     st.plotly_chart(fig_vol, use_container_width=True)
 
 st.markdown("---")
-st.markdown("### 🔬 Panorama Geral: Risco vs Volume por Tópico")
+st.markdown("### Panorama Geral: Risco vs Volume por Tópico")
 st.markdown("Este gráfico ignora o filtro individual de Tópico para permitir comparar globalmente quais os problemas de saúde com mais dados (Volume) e com maiores taxas (Risco).")
 
 # Usar apenas o filtro de Ano para garantir que vemos todos os tópicos
@@ -188,7 +237,7 @@ fig_scatter.update_layout(
 st.plotly_chart(fig_scatter, use_container_width=True)
 
 st.markdown("---")
-st.markdown("### 🗺️ Distribuição Geográfica")
+st.markdown("### Distribuição Geográfica")
 
 df_mapa = df_filtrado.groupby('LocationAbbr', as_index=False)['Data_Value'].mean()
 fig_mapa = px.choropleth(
@@ -209,7 +258,7 @@ fig_mapa.update_layout(
 st.plotly_chart(fig_mapa, use_container_width=True)
 
 st.markdown("---")
-st.markdown("### 👥 Segmentação Demográfica Filtrada")
+st.markdown("### Segmentação Demográfica Filtrada")
 
 # 4. Criação de Separadores Visuais (Tabs) para não misturar os gráficos demográficos
 tab_idade, tab_genero, tab_etnia = st.tabs([
@@ -218,7 +267,10 @@ tab_idade, tab_genero, tab_etnia = st.tabs([
     "🌍 Por Etnia / Raça"
 ])
 
-# --- SEPARADOR 1: GRÁFICO DE IDADE (COLUNAS LIMPAS) ---
+# =============================================================================
+# 6. ANÁLISE DEMOGRÁFICA (IDADE, GÉNERO E ETNIA)
+# =============================================================================
+# Gráfico 7: Distribuição da Prevalência por Faixa Etária (Gráfico de Barras)
 with tab_idade:
     st.subheader("Análise por Grupos Etários")
     
@@ -267,7 +319,7 @@ with tab_idade:
         st.info("Sem dados de idade para o tópico selecionado.")
 
 
-# --- SEPARADOR 2: GRÁFICO DE GÉNERO (CIRCULAR / PIE) ---
+# Gráfico 8: Distribuição da Prevalência por Género (Gráfico Circular / Pie Chart)
 with tab_genero:
     st.subheader("Análise por Género")
     
@@ -308,7 +360,7 @@ with tab_genero:
         st.info("Sem dados de género para o tópico selecionado.")
 
 
-# --- SEPARADOR 3: GRÁFICO DE ETNIA (BARRAS HORIZONTAIS LIMPAS) ---
+# Gráfico 9: Distribuição da Prevalência por Etnia e Raça (Gráfico de Barras Horizontais)
 with tab_etnia:
     st.subheader("Análise por Etnia e Raça")
     
@@ -356,9 +408,10 @@ with tab_etnia:
     else:
         st.info("Sem dados de etnia para o tópico selecionado.")
 
-# -----------------------------------------------------------------------------
-# 4. INTEGRAÇÃO DE LLM (CHATBOT COM OLLAMA LOCAL) - Requisito 4 do Enunciado
-# -----------------------------------------------------------------------------
+# =============================================================================
+# 7. INTEGRAÇÃO DE INTELIGÊNCIA ARTIFICIAL (CHATBOT LLM)
+# =============================================================================
+# Implementação de um assistente de IA local usando a API do Ollama (Requisito 4)
 st.markdown("---")
 st.markdown("### Assistente de BI")
 st.markdown("Fale com o assistente inteligente para extrair insights adicionais dos dados que está a visualizar.")
@@ -396,7 +449,7 @@ if prompt := st.chat_input("Escreve a tua pergunta (ex: 'Qual é a região mais 
                 
                 url_ollama = "http://localhost:11434/api/generate"
                 payload = {
-                    "model": "gemma2",
+                    "model": "llama3.2:1b",
                     "prompt": prompt_completo,
                     "stream": False
                 }
@@ -409,8 +462,8 @@ if prompt := st.chat_input("Escreve a tua pergunta (ex: 'Qual é a região mais 
                     # Guardar a resposta do assistente no histórico
                     st.session_state.mensagens.append({"role": "assistant", "content": texto_resposta})
                 else:
-                    st.error(f"Erro no Ollama (Status {resposta.status_code}). Verifica se o modelo 'gemma2' está instalado.")
+                    st.error(f"Erro no Ollama (Status {resposta.status_code}). Verifica se o modelo 'llama3.2:1b' está instalado.")
             except requests.exceptions.ConnectionError:
-                st.error("❌ Não foi possível ligar ao Ollama. Verifica se está a correr (http://localhost:11434).")
+                st.error(" Não foi possível ligar ao Ollama. Verifica se está a correr (http://localhost:11434).")
             except Exception as e:
                 st.error(f"Erro inesperado: {str(e)}")
