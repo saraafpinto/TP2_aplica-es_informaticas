@@ -39,30 +39,40 @@ st.markdown("""
 # Importação do dataset e criação de colunas demográficas (Age_Group, Gender, Race_Ethnicity)
 @st.cache_data
 def carregar_e_tratar_dados():
-    """Carrega o dataset e realiza a limpeza e criação de colunas demográficas."""
+    """Carrega o dataset, realiza a limpeza, remove nulos/USM e exporta uma versão para o Power BI."""
+    import os
     df = pd.read_csv("dataset.csv")
     
-    # Criar a coluna Age_Group
+    # 1. Criar as colunas demográficas
     df['Age_Group'] = np.where(
         df['Break_Out_Category'].str.lower().str.contains('age', na=False),
         df['Break_out'],
         'Overall'
     )
     
-    # Criar a coluna Gender
     df['Gender'] = np.where(
         df['Break_Out_Category'].str.lower().str.contains('gender', na=False),
         df['Break_out'],
         'Overall'
     )
     
-    # Criar a coluna Race_Ethnicity
     df['Race_Ethnicity'] = np.where(
         df['Break_Out_Category'].str.lower().str.contains('race|ethnicity', na=False),
         df['Break_out'],
         'Overall'
     )
     
+    # 2. Filtrar linhas onde o valor do indicador (Data_Value) está em falta
+    df = df.dropna(subset=['Data_Value']).copy()
+    
+    # 3. Remover a Mediana Nacional (USM) para consistência com o Power BI
+    df = df[df['LocationAbbr'] != 'USM']
+    
+    # 4. Exportar o CSV limpo para ser consumido pelo Power BI
+    # (Fazemos isto apenas uma vez para não gastar tempo de escrita desnecessário)
+    if not os.path.exists("dataset_limpo.csv"):
+        df.to_csv("dataset_limpo.csv", index=False)
+        
     return df
 
 # Execução da função de carregamento para a memória
@@ -289,11 +299,12 @@ with tab_idade:
             x='Age_Group',
             y='Data_Value',
             color='Age_Group',
-            color_discrete_sequence=px.colors.qualitative.Pastel
+            color_discrete_sequence=px.colors.qualitative.Pastel,
+            text='Data_Value'
         )
         
         fig_idade.update_traces(
-            text=df_idade_agrupado['Data_Value'].round(1).astype(str) + '%',
+            texttemplate='%{text:.1f}%',
             textposition='outside',        
             textfont=dict(size=14, family='Arial'),
             marker_line_width=0,           
@@ -379,11 +390,12 @@ with tab_etnia:
             y='Race_Ethnicity',
             orientation='h',
             color='Race_Ethnicity',
-            color_discrete_sequence=px.colors.qualitative.Pastel
+            color_discrete_sequence=px.colors.qualitative.Pastel,
+            text='Data_Value'
         )
         
         fig_etnia.update_traces(
-            text=df_etnia_agrupado['Data_Value'].round(1).astype(str) + '%',
+            texttemplate='%{text:.1f}%',
             textposition='outside',        
             textfont=dict(size=13, family='Arial'),
             marker_line_width=0,
