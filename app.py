@@ -69,7 +69,6 @@ def carregar_e_tratar_dados():
     df = df[df['LocationAbbr'] != 'USM']
     
     # 4. Exportar o CSV limpo para ser consumido pelo Power BI
-    # (Fazemos isto apenas uma vez para não gastar tempo de escrita desnecessário)
     if not os.path.exists("dataset_limpo.csv"):
         df.to_csv("dataset_limpo.csv", index=False)
         
@@ -423,7 +422,7 @@ with tab_etnia:
 # =============================================================================
 # 7. INTEGRAÇÃO DE INTELIGÊNCIA ARTIFICIAL (CHATBOT LLM)
 # =============================================================================
-# Implementação de um assistente de IA local usando a API do Ollama (Requisito 4)
+# Implementação de um assistente de IA local usando a API do Ollama 
 st.markdown("---")
 st.markdown("### Assistente de BI")
 st.markdown("Fale com o assistente inteligente para extrair insights adicionais dos dados que está a visualizar.")
@@ -439,7 +438,7 @@ for msg in st.session_state.mensagens:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Caixa de input de chat fixa em baixo (estilo ChatGPT)
+# Caixa de input de chat fixa em baixo 
 if prompt := st.chat_input("Escreve a tua pergunta (ex: 'Qual é a região mais crítica e porquê?')"):
     # Guardar a mensagem do user no histórico e mostrar
     st.session_state.mensagens.append({"role": "user", "content": prompt})
