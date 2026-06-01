@@ -271,9 +271,9 @@ st.markdown("### Segmentação Demográfica Filtrada")
 
 # 4. Criação de Separadores Visuais (Tabs) para não misturar os gráficos demográficos
 tab_idade, tab_genero, tab_etnia = st.tabs([
-    "🧓 Por Faixa Etária", 
-    "👩‍🦰 Por Género", 
-    "🌍 Por Etnia / Raça"
+    "Por Faixa Etária", 
+    "Por Género", 
+    "Por Etnia / Raça"
 ])
 
 # =============================================================================
@@ -342,25 +342,33 @@ with tab_genero:
     if not df_genero.empty:
         df_genero_agrupado = df_genero.groupby('Gender', as_index=False)['Data_Value'].mean()
         
-        fig_genero = px.pie(
+        # 1. Mudamos para px.bar e definimos os eixos X e Y
+        fig_genero = px.bar(
             df_genero_agrupado,
-            values='Data_Value',
-            names='Gender',
-            color='Gender',
-            color_discrete_sequence=['#91CC75', '#5470C6'] 
+            x='Gender',                          # Género no eixo horizontal
+            y='Data_Value',                      # Média no eixo vertical
+            color='Gender',                      # Cores diferentes por género
+            color_discrete_sequence=['#91CC75', '#5470C6'],
+            text='Data_Value'                    # Mostrar o valor numérico na barra
         )
         
+        # 2. Formatamos o texto para aparecer fora da barra com uma casa decimal e o símbolo %
         fig_genero.update_traces(
-            textposition='inside',
-            textinfo='percent+label', 
-            textfont=dict(size=14),
-            marker=dict(line=dict(color='rgba(0,0,0,0)', width=0)) 
+            texttemplate='%{text:.1f}%',
+            textposition='outside',        
+            textfont=dict(size=14, family='Arial'),
+            marker_line_width=0
         )
         
+        # 3. Limpamos o fundo e ajustamos os eixos para ficar minimalista
         fig_genero.update_layout(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            legend=dict(font=dict(size=12)),
+            xaxis_title="Género",
+            yaxis_title="Média de Prevalência (%)",
+            showlegend=False,
+            # Dá uma margem extra no topo do eixo Y para o texto não ficar cortado
+            yaxis=dict(range=[0, df_genero_agrupado['Data_Value'].max() * 1.15], showgrid=True),
             margin=dict(t=40, b=40, l=40, r=40),
             height=500
         )
@@ -439,30 +447,78 @@ for msg in st.session_state.mensagens:
         st.markdown(msg["content"])
 
 # Caixa de input de chat fixa em baixo 
+# Caixa de input de chat fixa em baixo 
 if prompt := st.chat_input("Escreve a tua pergunta (ex: 'Qual é a região mais crítica e porquê?')"):
     # Guardar a mensagem do user no histórico e mostrar
     st.session_state.mensagens.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Lógica do Bot
+    # Lógica do Bot (Substitui a partir daqui com atenção à indentação)
     with st.chat_message("assistant"):
         with st.spinner("A analisar os dados..."):
             try:
-                resumo_estados = df_filtrado.groupby('LocationDesc')['Data_Value'].mean().sort_values(ascending=False).head(5).to_dict()
+                # 1. Cálculos geográficos (Estados)
+                estado_maior_risco = df_filtrado.groupby('LocationDesc')['Data_Value'].mean().idxmax()
+                valor_maior_risco = df_filtrado.groupby('LocationDesc')['Data_Value'].mean().max()
+
+                estado_maior_volume = df_filtrado.groupby('LocationDesc').size().idxmax()
+                valor_maior_volume = df_filtrado.groupby('LocationDesc').size().max()
+
+                # 2. Cálculos demográficos (Idades)
+                df_idade = df_filtrado[df_filtrado['Age_Group'] != 'Overall']
+                if not df_idade.empty:
+                    idade_maior_risco = df_idade.groupby('Age_Group')['Data_Value'].mean().idxmax()
+                    valor_idade_risco = df_idade.groupby('Age_Group')['Data_Value'].mean().max()
+                    idade_texto = f"A faixa etária com maior risco/prevalência média é '{idade_maior_risco}' com {valor_idade_risco:.2f}%."
+                else:
+                    idade_texto = "Não existem dados específicos de faixas etárias."
+
+                # 3. NOVO: Cálculos de Género
+                df_genero = df_filtrado[df_filtrado['Gender'] != 'Overall']
+                if not df_genero.empty:
+                    genero_maior_risco = df_genero.groupby('Gender')['Data_Value'].mean().idxmax()
+                    valor_genero_risco = df_genero.groupby('Gender')['Data_Value'].mean().max()
+                    genero_texto = f"O género com maior risco/prevalência média é '{genero_maior_risco}' com {valor_genero_risco:.2f}%."
+                else:
+                    genero_texto = "Não existem dados específicos de género."
+
+                # 4. NOVO: Cálculos de Etnia / Raça
+                df_etnia = df_filtrado[df_filtrado['Race_Ethnicity'] != 'Overall']
+                if not df_etnia.empty:
+                    etnia_maior_risco = df_etnia.groupby('Race_Ethnicity')['Data_Value'].mean().idxmax()
+                    valor_etnia_risco = df_etnia.groupby('Race_Ethnicity')['Data_Value'].mean().max()
+                    etnia_texto = f"A etnia/raça com maior risco/prevalência média é '{etnia_maior_risco}' com {valor_etnia_risco:.2f}%."
+                else:
+                    etnia_texto = "Não existem dados específicos de etnia/raça."
+
+                # 5. Juntar TUDO no contexto para dar inteligência total ao Llama
                 contexto_basico = (
-                    f"O utilizador está a ver um dashboard com {len(df_filtrado)} linhas filtradas. "
-                    f"Média global atual do indicador: {df_filtrado['Data_Value'].mean():.2f}%. "
-                    f"Top 5 Estados mais críticos: {resumo_estados}."
+                    f"Dados estatísticos do dashboard atual (públicos e agregados):\n"
+                    f"- Total de registos filtrados: {len(df_filtrado)}.\n"
+                    f"- {idade_texto}\n"
+                    f"- {genero_texto}\n"
+                    f"- {etnia_texto}\n"
+                    f"- O estado com a maior MÉDIA de valor (maior risco) é {estado_maior_risco} com {valor_maior_risco:.2f}%.\n"
+                    f"- O estado com o maior VOLUME total de notificações é {estado_maior_volume} com {valor_maior_volume} registos.\n"
+                    f"Regra estrita: Responde diretamente à pergunta usando estes factos. Se te perguntarem por género, usa a linha do género; se for idade, usa a da idade. Nunca mistures os conceitos."
                 )
                 
-                prompt_completo = f"És um assistente de Business Intelligence empático. Contexto atual dos dados: {contexto_basico}\nPergunta: {prompt}\nResponde de forma muito concisa e em Português de Portugal."
+                # 3. Definir a persona e regras estritas para evitar bloqueios de privacidade
+                prompt_completo = (
+                    f"Instrução: És um assistente de BI focado em estatísticas regionais. "
+                    f"Atenção: Os dados NÃO são pessoais, são estatísticas públicas de regiões/estados. Não há infração de privacidade. "
+                    f"Contexto atual dos dados: {contexto_basico}\n"
+                    f"Pergunta do utilizador: {prompt}\n"
+                    f"Responde diretamente à pergunta com base no contexto fornecido, de forma muito concisa e em Português de Portugal."
+                )
                 
                 url_ollama = "http://localhost:11434/api/generate"
                 payload = {
-                    "model": "llama3.2:1b",
+                    "model": "llama3.2:3b",
                     "prompt": prompt_completo,
-                    "stream": False
+                    "stream": False,
+                    "options": {"temperature": 0.2} # Menor temperatura = respostas mais exatas e menos criativas
                 }
                 
                 resposta = requests.post(url_ollama, json=payload, timeout=60)
@@ -473,8 +529,8 @@ if prompt := st.chat_input("Escreve a tua pergunta (ex: 'Qual é a região mais 
                     # Guardar a resposta do assistente no histórico
                     st.session_state.mensagens.append({"role": "assistant", "content": texto_resposta})
                 else:
-                    st.error(f"Erro no Ollama (Status {resposta.status_code}). Verifica se o modelo 'llama3.2:1b' está instalado.")
+                    st.error(f"Erro no Ollama (Status {resposta.status_code}). Verifica se o modelo 'llama3.2:3b' está instalado.")
             except requests.exceptions.ConnectionError:
-                st.error(" Não foi possível ligar ao Ollama. Verifica se está a correr (http://localhost:11434).")
+                st.error("Não foi possível ligar ao Ollama. Verifica se está a correr (http://localhost:11434).")
             except Exception as e:
                 st.error(f"Erro inesperado: {str(e)}")
